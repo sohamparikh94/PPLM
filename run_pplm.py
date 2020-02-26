@@ -550,7 +550,7 @@ def generate_text_pplm(
     if verbosity_level >= VERBOSE:
         range_func = trange(length, ascii=True)
     else:
-        range_func = range(length)
+        range_func = trange(length)
 
     for i in range_func:
 
