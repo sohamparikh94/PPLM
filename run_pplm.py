@@ -756,7 +756,7 @@ def run_pplm_example(
             tokenizer.bos_token + raw_text,
             add_special_tokens=False
         )
-    if(verbosity >= REGULAR):
+    if(verbosity_level >= REGULAR):
         print("= Prefix of sentence =")
         print(tokenizer.decode(tokenized_cond_text))
         print()
@@ -795,7 +795,7 @@ def run_pplm_example(
 
     if verbosity_level >= REGULAR:
         print("=" * 80)
-    if(verbosity >= REGULAR):
+    if(verbosity_level >= REGULAR):
         print("= Unperturbed generated text =")
         print(unpert_gen_text)
         print()
@@ -832,7 +832,7 @@ def run_pplm_example(
             else:
                 pert_gen_text = tokenizer.decode(pert_gen_tok_text.tolist()[0])
 
-            if(verbosity >= REGULAR):
+            if(verbosity_level >= REGULAR):
                 print("= Perturbed generated text {} =".format(i + 1))
                 print(pert_gen_text)
                 print()
