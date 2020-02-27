@@ -24,6 +24,8 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from pplm_classification_head import ClassificationHead
 from pplm_regression_head import RegressionHead
 
+from IPython import embed
+
 torch.manual_seed(0)
 np.random.seed(0)
 EPSILON = 1e-10
@@ -33,68 +35,17 @@ max_length_seq = 100
 
 
 
+
 class Discriminator(torch.nn.Module):
     """Transformer encoder followed by a Classification Head"""
 
     def __init__(
             self,
-            class_size,
             pretrained_model="gpt2-medium",
             cached_mode=False,
             device='cpu'
     ):
         super(Discriminator, self).__init__()
-        self.tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model)
-        self.encoder = GPT2LMHeadModel.from_pretrained(pretrained_model)
-        self.embed_size = self.encoder.transformer.config.hidden_size
-        self.classifier_head = ClassificationHead(
-            class_size=class_size,
-            embed_size=self.embed_size
-        )
-        self.cached_mode = cached_mode
-        self.device = device
-
-    def get_classifier(self):
-        return self.classifier_head
-
-    def train_custom(self):
-        for param in self.encoder.parameters():
-            param.requires_grad = False
-        self.classifier_head.train()
-
-    def avg_representation(self, x):
-        mask = x.ne(0).unsqueeze(2).repeat(
-            1, 1, self.embed_size
-        ).float().to(self.device).detach()
-        hidden, _ = self.encoder.transformer(x)
-        masked_hidden = hidden * mask
-        avg_hidden = torch.sum(masked_hidden, dim=1) / (
-                torch.sum(mask, dim=1).detach() + EPSILON
-        )
-        return avg_hidden
-
-    def forward(self, x):
-        if self.cached_mode:
-            avg_hidden = x.to(self.device)
-        else:
-            avg_hidden = self.avg_representation(x.to(self.device))
-
-        logits = self.classifier_head(avg_hidden)
-        probs = F.log_softmax(logits, dim=-1)
-
-        return probs
-
-
-class Regressor(torch.nn.Module):
-    """Transformer encoder followed by a Classification Head"""
-
-    def __init__(
-            self,
-            pretrained_model="gpt2-medium",
-            cached_mode=False,
-            device='cpu'
-    ):
-        super(Regressor, self).__init__()
         self.tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model)
         self.encoder = GPT2LMHeadModel.from_pretrained(pretrained_model)
         self.embed_size = self.encoder.transformer.config.hidden_size
@@ -192,13 +143,13 @@ def train_epoch(data_loader, discriminator, optimizer,
                 epoch=0, log_interval=10, device='cpu'):
     samples_so_far = 0
     discriminator.train_custom()
-    for batch_idx, (input_t, target_t) in enumerate(data_loader):
+    for batch_idx, (input_t, target_t) in enumerate(tqdm(data_loader)):
         input_t, target_t = input_t.to(device), target_t.to(device)
 
         optimizer.zero_grad()
 
         output_t = discriminator(input_t)
-        loss = F.nll_loss(output_t, target_t)
+        loss = F.mse_loss(output_t, target_t.type(torch.FloatTensor))
         loss.backward(retain_graph=True)
         optimizer.step()
 
@@ -223,7 +174,7 @@ def evaluate_performance(data_loader, discriminator, device='cpu'):
             input_t, target_t = input_t.to(device), target_t.to(device)
             output_t = discriminator(input_t)
             # sum up batch loss
-            test_loss += F.nll_loss(output_t, target_t, reduction="sum").item()
+            test_loss += F.mse_loss(output_t, target_t, reduction="sum").item()
             # get the index of the max log-probability
             pred_t = output_t.argmax(dim=1, keepdim=True)
             correct += pred_t.eq(target_t.view_as(pred_t)).sum().item()
@@ -239,7 +190,7 @@ def evaluate_performance(data_loader, discriminator, device='cpu'):
     )
 
 
-def predict(input_sentence, model, classes, cached=False, device='cpu'):
+def predict(input_sentence, model, cached=False, device='cpu'):
     input_t = model.tokenizer.encode(input_sentence)
     input_t = torch.tensor([input_t], dtype=torch.long, device=device)
     if cached:
@@ -247,10 +198,7 @@ def predict(input_sentence, model, classes, cached=False, device='cpu'):
 
     log_probs = model(input_t).data.cpu().numpy().flatten().tolist()
     print("Input sentence:", input_sentence)
-    print("Predictions:", ", ".join(
-        "{}: {:.4f}".format(c, math.exp(log_prob)) for c, log_prob in
-        zip(classes, log_probs)
-    ))
+    print("Prediction: ", log_probs)
 
 
 def get_cached_data_loader(dataset, batch_size, discriminator,
@@ -279,7 +227,7 @@ def get_cached_data_loader(dataset, batch_size, discriminator,
 
 
 def train_discriminator(
-        dataset, dataset_fp=None, pretrained_model="gpt2-medium",
+        dataset, train_dataset_fp=None, valid_dataset_fp=None, pretrained_model="gpt2-medium",
         epochs=10, batch_size=64, log_interval=10,
         save_model=False, cached=False, no_cuda=False):
     device = "cuda" if torch.cuda.is_available() and not no_cuda else "cpu"
@@ -454,22 +402,14 @@ def train_discriminator(
         # This assumes the input dataset is a TSV with the following structure:
         # class \t text
 
-        if dataset_fp is None:
+        if train_dataset_fp is None:
             raise ValueError("When generic dataset is selected, "
-                             "dataset_fp needs to be specified aswell.")
-
-        classes = set()
-        with open(dataset_fp) as f:
-            csv_reader = csv.reader(f, delimiter="\t")
-            for row in tqdm(csv_reader, ascii=True):
-                if row:
-                    classes.add(row[0])
-
-        idx2class = sorted(classes)
-        class2idx = {c: i for i, c in enumerate(idx2class)}
+                             "train_dataset_fp needs to be specified aswell.")
+        if valid_dataset_fp is None:
+            raise ValueError("When generic dataset is selected, "
+                             "valid_dataset_fp needs to be specified aswell.")
 
         discriminator = Discriminator(
-            class_size=len(idx2class),
             pretrained_model=pretrained_model,
             cached_mode=cached,
             device=device
@@ -477,11 +417,11 @@ def train_discriminator(
 
         x = []
         y = []
-        with open(dataset_fp) as f:
+        with open(train_dataset_fp) as f:
             csv_reader = csv.reader(f, delimiter="\t")
             for i, row in enumerate(tqdm(csv_reader, ascii=True)):
                 if row:
-                    label = row[0]
+                    label = float(row[0])
                     text = row[1]
 
                     try:
@@ -501,26 +441,52 @@ def train_discriminator(
                             continue
 
                         x.append(seq)
-                        y.append(class2idx[label])
+                        y.append(label)
 
                     except:
                         print("Error tokenizing line {}, skipping it".format(i))
                         pass
 
-        full_dataset = Dataset(x, y)
-        train_size = int(0.9 * len(full_dataset))
-        test_size = len(full_dataset) - train_size
-        train_dataset, test_dataset = torch.utils.data.random_split(
-            full_dataset,
-            [train_size, test_size]
-        )
+        train_dataset = Dataset(x, y)
+        x = []
+        y = []
+        with open(valid_dataset_fp) as f:
+            csv_reader = csv.reader(f, delimiter="\t")
+            for i, row in enumerate(tqdm(csv_reader, ascii=True)):
+                if row:
+                    label = float(row[0])
+                    text = row[1]
+
+                    try:
+                        seq = discriminator.tokenizer.encode(text)
+                        if (len(seq) < max_length_seq):
+                            seq = torch.tensor(
+                                [50256] + seq,
+                                device=device,
+                                dtype=torch.long
+                            )
+
+                        else:
+                            print(
+                                "Line {} is longer than maximum length {}".format(
+                                    i, max_length_seq
+                                ))
+                            continue
+
+                        x.append(seq)
+                        y.append(label)
+
+                    except:
+                        print("Error tokenizing line {}, skipping it".format(i))
+                        pass
+
+        test_dataset = Dataset(x, y)
+
+        
 
         discriminator_meta = {
-            "class_size": len(idx2class),
             "embed_size": discriminator.embed_size,
             "pretrained_model": pretrained_model,
-            "class_vocab": class2idx,
-            "default_class": 0,
         }
 
     end = time.time()
@@ -565,7 +531,7 @@ def train_discriminator(
     for epoch in range(epochs):
         start = time.time()
         print("\nEpoch", epoch + 1)
-
+        
         train_epoch(
             discriminator=discriminator,
             data_loader=train_loader,
@@ -584,7 +550,7 @@ def train_discriminator(
         print("Epoch took: {:.3f}s".format(end - start))
 
         print("\nExample prediction")
-        predict(example_sentence, discriminator, idx2class,
+        predict(example_sentence, discriminator,
                 cached=cached, device=device)
 
         if save_model:
@@ -599,13 +565,16 @@ def train_discriminator(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Train a discriminator on top of GPT-2 representations")
+        description="Train a regressor on top of GPT-2 representations")
     parser.add_argument("--dataset", type=str, default="SST",
                         choices=("SST", "clickbait", "toxic", "generic"),
-                        help="dataset to train the discriminator on."
+                        help="dataset to train the regressor on."
                              "In case of generic, the dataset is expected"
                              "to be a TSBV file with structure: class \\t text")
-    parser.add_argument("--dataset_fp", type=str, default="",
+    parser.add_argument("--train_dataset_fp", type=str, default="",
+                        help="File path of the dataset to use. "
+                             "Needed only in case of generic datadset")
+    parser.add_argument("--valid_dataset_fp", type=str, default="",
                         help="File path of the dataset to use. "
                              "Needed only in case of generic datadset")
     parser.add_argument("--pretrained_model", type=str, default="gpt2-medium",
