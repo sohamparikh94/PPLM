@@ -14,5 +14,5 @@ class RegressionHead(torch.nn.Module):
     def forward(self, hidden_state):
         # hidden_state = F.relu(self.mlp1(hidden_state))
         # hidden_state = self.mlp2(hidden_state)
-        logits = F.relu(self.mlp(hidden_state))
+        logits = self.mlp(hidden_state)
         return logits
