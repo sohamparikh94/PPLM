@@ -50,9 +50,14 @@ class Discriminator(torch.nn.Module):
         self.tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model)
         self.encoder = GPT2LMHeadModel.from_pretrained(pretrained_model)
         self.embed_size = self.encoder.transformer.config.hidden_size
-        self.regressor_head = RegressionHead2(
-            embed_size=self.embed_size
-        )
+        if(reg_type == 1):
+            self.regressor_head = RegressionHead1(
+                embed_size=self.embed_size
+            )
+        if(reg_type == 2):
+            self.regressor_head = RegressionHead2(
+                embed_size=self.embed_size
+            )
         self.cached_mode = cached_mode
         self.device = device
 
