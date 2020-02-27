@@ -5,7 +5,7 @@ class RegressionHead1(torch.nn.Module):
     """Classification Head for  transformer encoders"""
 
     def __init__(self, embed_size):
-        super(RegressionHead, self).__init__()
+        super(RegressionHead1, self).__init__()
         self.embed_size = embed_size
         # self.mlp1 = torch.nn.Linear(embed_size, embed_size)
         # self.mlp2 = (torch.nn.Linear(embed_size, class_size))
@@ -21,7 +21,7 @@ class RegressionHead2(torch.nn.Module):
     """Classification Head for  transformer encoders"""
 
     def __init__(self, embed_size):
-        super(RegressionHead, self).__init__()
+        super(RegressionHead2, self).__init__()
         self.embed_size = embed_size
         # self.mlp1 = torch.nn.Linear(embed_size, embed_size)
         # self.mlp2 = (torch.nn.Linear(embed_size, class_size))
