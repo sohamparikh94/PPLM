@@ -149,7 +149,7 @@ def train_epoch(data_loader, discriminator, optimizer,
         optimizer.zero_grad()
 
         output_t = discriminator(input_t)
-        loss = F.mse_loss(output_t, target_t.type(torch.FloatTensor))
+        loss = F.mse_loss(output_t, target_t.type(torch.FloatTensor).to(device))
         loss.backward(retain_graph=True)
         optimizer.step()
 
