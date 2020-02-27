@@ -180,7 +180,7 @@ def evaluate_performance(data_loader, discriminator, device='cpu'):
             input_t, target_t = input_t.to(device), target_t.to(device)
             output_t = discriminator(input_t)
             # sum up batch loss
-            test_loss += F.mse_loss(output_t, target_t, reduction="sum").item()
+            test_loss += F.mse_loss(output_t, target_t, reduction="mean").item()
             # get the index of the max log-probability
             pred_t = output_t.argmax(dim=1, keepdim=True)
             correct += pred_t.eq(target_t.view_as(pred_t)).sum().item()

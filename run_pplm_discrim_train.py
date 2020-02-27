@@ -22,7 +22,6 @@ from tqdm import tqdm, trange
 
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from pplm_classification_head import ClassificationHead
-from pplm_regression_head import RegressionHead
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -83,56 +82,6 @@ class Discriminator(torch.nn.Module):
         probs = F.log_softmax(logits, dim=-1)
 
         return probs
-
-
-class Regressor(torch.nn.Module):
-    """Transformer encoder followed by a Classification Head"""
-
-    def __init__(
-            self,
-            pretrained_model="gpt2-medium",
-            cached_mode=False,
-            device='cpu'
-    ):
-        super(Regressor, self).__init__()
-        self.tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model)
-        self.encoder = GPT2LMHeadModel.from_pretrained(pretrained_model)
-        self.embed_size = self.encoder.transformer.config.hidden_size
-        self.regressor_head = RegressionHead(
-            embed_size=self.embed_size
-        )
-        self.cached_mode = cached_mode
-        self.device = device
-
-    def get_classifier(self):
-        return self.regressor_head
-
-    def train_custom(self):
-        for param in self.encoder.parameters():
-            param.requires_grad = False
-        self.regressor_head.train()
-
-    def avg_representation(self, x):
-        mask = x.ne(0).unsqueeze(2).repeat(
-            1, 1, self.embed_size
-        ).float().to(self.device).detach()
-        hidden, _ = self.encoder.transformer(x)
-        masked_hidden = hidden * mask
-        avg_hidden = torch.sum(masked_hidden, dim=1) / (
-                torch.sum(mask, dim=1).detach() + EPSILON
-        )
-        return avg_hidden
-
-    def forward(self, x):
-        if self.cached_mode:
-            avg_hidden = x.to(self.device)
-        else:
-            avg_hidden = self.avg_representation(x.to(self.device))
-
-        logits = self.regressor_head(avg_hidden)
-
-        return logits
-
 
 
 class Dataset(data.Dataset):
