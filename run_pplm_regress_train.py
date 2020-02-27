@@ -22,7 +22,7 @@ from tqdm import tqdm, trange
 
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from pplm_classification_head import ClassificationHead
-from pplm_regression_head import RegressionHead
+from pplm_regression_head import RegressionHead1, RegressionHead2
 
 from IPython import embed
 
@@ -43,13 +43,14 @@ class Discriminator(torch.nn.Module):
             self,
             pretrained_model="gpt2-medium",
             cached_mode=False,
-            device='cpu'
+            device='cpu',
+            reg_type=1
     ):
         super(Discriminator, self).__init__()
         self.tokenizer = GPT2Tokenizer.from_pretrained(pretrained_model)
         self.encoder = GPT2LMHeadModel.from_pretrained(pretrained_model)
         self.embed_size = self.encoder.transformer.config.hidden_size
-        self.regressor_head = RegressionHead(
+        self.regressor_head = RegressionHead2(
             embed_size=self.embed_size
         )
         self.cached_mode = cached_mode
@@ -229,7 +230,7 @@ def get_cached_data_loader(dataset, batch_size, discriminator,
 def train_discriminator(
         dataset, train_dataset_fp=None, valid_dataset_fp=None, pretrained_model="gpt2-medium",
         epochs=10, batch_size=64, log_interval=10,
-        save_model=False, cached=False, no_cuda=False):
+        save_model=False, cached=False, no_cuda=False, reg_type=1):
     device = "cuda" if torch.cuda.is_available() and not no_cuda else "cpu"
 
     print("Preprocessing {} dataset...".format(dataset))
@@ -244,7 +245,8 @@ def train_discriminator(
             class_size=len(idx2class),
             pretrained_model=pretrained_model,
             cached_mode=cached,
-            device=device
+            device=device,
+            reg_type=reg_type
         ).to(device)
 
         text = torchtext_data.Field()
@@ -591,6 +593,8 @@ if __name__ == "__main__":
                         help="whether to cache the input representations")
     parser.add_argument("--no_cuda", action="store_true",
                         help="use to turn off cuda")
+    parser.add_argument("--reg_type", type=int, default=1,
+                        help="choose which regression model to use")
     args = parser.parse_args()
 
     train_discriminator(**(vars(args)))

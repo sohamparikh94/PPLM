@@ -22,6 +22,9 @@ Example command with discriminator:
 python examples/run_pplm.py -D sentiment --class_label 3 --cond_text "The lake" --length 10 --gamma 1.0 --num_iterations 30 --num_samples 10 --stepsize 0.01 --kl_scale 0.01 --gm_scale 0.95
 """
 
+from IPython import embed
+
+
 import argparse
 import json
 from operator import add
@@ -37,10 +40,12 @@ from transformers.file_utils import cached_path
 from transformers.modeling_gpt2 import GPT2LMHeadModel
 
 from pplm_classification_head import ClassificationHead
+from pplm_regression_head import RegressionHead1, RegressionHead2
 
 PPLM_BOW = 1
 PPLM_DISCRIM = 2
 PPLM_BOW_DISCRIM = 3
+PPLM_REGRESS = 4
 SMALL_CONST = 1e-15
 BIG_CONST = 1e10
 
@@ -125,6 +130,7 @@ def perturb_past(
         stepsize=0.01,
         one_hot_bows_vectors=None,
         classifier=None,
+        regressor=None,
         class_label=None,
         loss_type=0,
         num_iterations=3,
@@ -245,6 +251,29 @@ def perturb_past(
             loss += discrim_loss
             loss_list.append(discrim_loss)
 
+        if loss_type == PPLM_REGRESS:
+            mse_loss = torch.nn.MSELoss()
+            curr_unpert_past = unpert_past
+            curr_probs = torch.unsqueeze(probs, dim=1)
+            wte = model.resize_token_embeddings()
+            for _ in range(horizon_length):
+                input_embeds = torch.matmul(curr_probs, wte.weight.data)
+                _, curr_unpert_past, curr_all_hidden = model(
+                    past=curr_unpert_past,
+                    inputs_embeds=input_embeds
+                )
+                curr_hidden = curr_all_hidden[-1]
+                new_accumulated_hidden = new_accumulated_hidden + torch.sum(
+                    curr_hidden, dim=1)
+
+            prediction = regressor(new_accumulated_hidden/ (curr_length + 1 + horizon_length))
+            regress_loss = mse_loss(prediction, torch.tensor([[100]], 
+                                    device=device, 
+                                    dtype=torch.float))
+            loss += regress_loss
+            loss_list.append(regress_loss)
+
+
         kl_loss = 0.0
         if kl_scale > 0.0:
             unpert_probs = F.softmax(unpert_logits[:, -1, :], dim=-1)
@@ -363,6 +392,34 @@ def get_classifier(
     return classifier, label_id
 
 
+def get_regressor(
+        name: Optional[str],
+        device: str,
+        verbosity_level: int = REGULAR
+) -> Tuple[Optional[ClassificationHead], Optional[int]]:
+    if name is None:
+        return None, None
+
+    params = DISCRIMINATOR_MODELS_PARAMS[name]
+    classifier = RegressionHead1(
+        embed_size=params['embed_size']
+    ).to(device)
+    if "url" in params:
+        resolved_archive_file = cached_path(params["url"])
+    elif "path" in params:
+        resolved_archive_file = params["path"]
+    else:
+        raise ValueError("Either url or path have to be specified "
+                         "in the discriminator model parameters")
+    classifier.load_state_dict(
+        torch.load(resolved_archive_file, map_location=device))
+    classifier.eval()
+
+    return classifier
+
+
+
+
 def get_bag_of_words_indices(bag_of_words_ids_or_paths: List[str], tokenizer) -> \
         List[List[List[int]]]:
     bow_indices = []
@@ -404,6 +461,7 @@ def full_text_generation(
         device="cuda",
         bag_of_words=None,
         discrim=None,
+        regress=None,
         class_label=None,
         length=100,
         stepsize=0.02,
@@ -427,6 +485,10 @@ def full_text_generation(
         device
     )
 
+    regressor = get_regressor(
+        regress,
+        device)
+
     bow_indices = []
     if bag_of_words:
         bow_indices = get_bag_of_words_indices(bag_of_words.split(";"),
@@ -447,6 +509,9 @@ def full_text_generation(
         loss_type = PPLM_DISCRIM
         if verbosity_level >= REGULAR:
             print("Using PPLM-Discrim")
+
+    elif regressor is not None:
+        loss_type = PPLM_REGRESS
 
     else:
         raise Exception("Specify either a bag of words or a discriminator")
@@ -477,6 +542,7 @@ def full_text_generation(
             perturb=True,
             bow_indices=bow_indices,
             classifier=classifier,
+            regressor=regressor,
             class_label=class_id,
             loss_type=loss_type,
             length=length,
@@ -514,6 +580,7 @@ def generate_text_pplm(
         perturb=True,
         bow_indices=None,
         classifier=None,
+        regressor=None,
         class_label=None,
         loss_type=0,
         length=100,
@@ -592,6 +659,7 @@ def generate_text_pplm(
                     stepsize=current_stepsize,
                     one_hot_bows_vectors=one_hot_bows_vectors,
                     classifier=classifier,
+                    regressor=regressor,
                     class_label=class_label,
                     loss_type=loss_type,
                     num_iterations=num_iterations,
@@ -682,6 +750,7 @@ def run_pplm_example(
         num_samples=1,
         bag_of_words=None,
         discrim=None,
+        regress=None,
         discrim_weights=None,
         discrim_meta=None,
         class_label=-1,
@@ -712,6 +781,20 @@ def run_pplm_example(
 
     # set the device
     device = "cuda" if torch.cuda.is_available() and not no_cuda else "cpu"
+
+    if regress == 'generic':
+        set_generic_model_params(discrim_weights, discrim_meta)
+
+    if regress is not None:
+
+        discriminator_pretrained_model = DISCRIMINATOR_MODELS_PARAMS[regress][
+            "pretrained_model"
+        ]
+        if pretrained_model != discriminator_pretrained_model:
+            pretrained_model = discriminator_pretrained_model
+            if verbosity_level >= REGULAR:
+                print("discrim = {}, pretrained_model set "
+                "to discriminator's = {}".format(discrim, pretrained_model))
 
     if discrim == 'generic':
         set_generic_model_params(discrim_weights, discrim_meta)
@@ -773,6 +856,7 @@ def run_pplm_example(
         num_samples=num_samples,
         bag_of_words=bag_of_words,
         discrim=discrim,
+        regress=regress,
         class_label=class_label,
         length=length,
         stepsize=stepsize,
@@ -886,6 +970,14 @@ if __name__ == '__main__':
         default=None,
         choices=("clickbait", "sentiment", "toxicity", "generic"),
         help="Discriminator to use",
+    )
+    parser.add_argument(
+        "--regress",
+        "-R",
+        type=str,
+        default=None,
+        choices=("generic"),
+        help="Regressor to use",
     )
     parser.add_argument('--discrim_weights', type=str, default=None,
                         help='Weights for the generic discriminator')
