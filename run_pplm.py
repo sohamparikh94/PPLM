@@ -70,6 +70,7 @@ BAG_OF_WORDS_ARCHIVE_MAP = {
     'science': "https://s3.amazonaws.com/models.huggingface.co/bert/pplm/bow/science.txt",
     'space': "https://s3.amazonaws.com/models.huggingface.co/bert/pplm/bow/space.txt",
     'technology': "https://s3.amazonaws.com/models.huggingface.co/bert/pplm/bow/technology.txt",
+    'kitchen': "./paper_code/wordlists/kitchen.txt"
 }
 
 DISCRIMINATOR_MODELS_PARAMS = {
