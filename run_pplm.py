@@ -28,6 +28,7 @@ from IPython import embed
 import argparse
 import json
 from operator import add
+from wordfreq import word_frequency
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -48,6 +49,9 @@ PPLM_BOW_DISCRIM = 3
 PPLM_REGRESS = 4
 SMALL_CONST = 1e-15
 BIG_CONST = 1e10
+
+ONE_HOT = 0
+WORD_FREQ = 1
 
 QUIET = 0
 REGULAR = 1
@@ -130,7 +134,7 @@ def perturb_past(
         accumulated_hidden=None,
         grad_norms=None,
         stepsize=0.01,
-        one_hot_bows_vectors=None,
+        bows_vectors=None,
         classifier=None,
         regressor=None,
         class_label=None,
@@ -217,8 +221,8 @@ def perturb_past(
         loss = 0.0
         loss_list = []
         if loss_type == PPLM_BOW or loss_type == PPLM_BOW_DISCRIM:
-            for one_hot_bow in one_hot_bows_vectors:
-                bow_logits = torch.mm(probs, torch.t(one_hot_bow))
+            for bow in bows_vectors:
+                bow_logits = torch.mm(probs, torch.t(bow))
                 bow_loss = -torch.log(torch.sum(bow_logits))
                 loss += bow_loss
                 loss_list.append(bow_loss)
@@ -452,7 +456,28 @@ def build_bows_one_hot_vectors(bow_indices, tokenizer, device='cuda'):
         one_hot_bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
         one_hot_bow.scatter_(1, single_bow, 1)
         one_hot_bows_vectors.append(one_hot_bow)
+    
     return one_hot_bows_vectors
+
+
+def build_bows_freq_vectors(bow_indices, tokenizer, device='cuda'):
+    if bow_indices is None:
+        return None
+
+    bows_vectors = []
+    for single_bow in bow_indices:
+        single_bow = list(filter(lambda x: len(x) <= 1, single_bow))
+        single_bow = torch.tensor(single_bow).to(device)
+        num_words = single_bow.shape[0]
+        bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
+        word_freq = [word_frequency(tokenizer.decode(idx), lang='en') for idx in single_bow]
+        sum_ = np.sum(word_freq)
+        word_freq = torch.tensor([[(x/sum_)*len(word_freq)] for x in word_freq]).to(device)
+        bow = bow.scatter_(1, single_bow, word_freq)
+        bows_vectors.append(bow)
+
+    return bows_vectors
+
 
 
 def full_text_generation(
@@ -462,6 +487,7 @@ def full_text_generation(
         num_samples=1,
         device="cuda",
         bag_of_words=None,
+        bow_type=0,
         discrim=None,
         regress=None,
         class_label=None,
@@ -543,6 +569,7 @@ def full_text_generation(
             device=device,
             perturb=True,
             bow_indices=bow_indices,
+            bow_type=bow_type,
             classifier=classifier,
             regressor=regressor,
             class_label=class_id,
@@ -581,6 +608,7 @@ def generate_text_pplm(
         device="cuda",
         perturb=True,
         bow_indices=None,
+        bow_type=0,
         classifier=None,
         regressor=None,
         class_label=None,
@@ -608,8 +636,13 @@ def generate_text_pplm(
         output_so_far = context_t
 
     # collect one hot vectors for bags of words
-    one_hot_bows_vectors = build_bows_one_hot_vectors(bow_indices, tokenizer,
+    if(bow_type == ONE_HOT):
+        bows_vectors = build_bows_one_hot_vectors(bow_indices, tokenizer,
                                                       device)
+    elif(bow_type == WORD_FREQ):
+        bows_vectors = build_bows_freq_vectors(bow_indices, tokenizer, device)
+
+    
 
     grad_norms = None
     last = None
@@ -659,7 +692,7 @@ def generate_text_pplm(
                     accumulated_hidden=accumulated_hidden,
                     grad_norms=grad_norms,
                     stepsize=current_stepsize,
-                    one_hot_bows_vectors=one_hot_bows_vectors,
+                    bows_vectors=bows_vectors,
                     classifier=classifier,
                     regressor=regressor,
                     class_label=class_label,
@@ -751,6 +784,7 @@ def run_pplm_example(
         uncond=False,
         num_samples=1,
         bag_of_words=None,
+        bow_type=0,
         discrim=None,
         regress=None,
         discrim_weights=None,
@@ -857,6 +891,7 @@ def run_pplm_example(
         device=device,
         num_samples=num_samples,
         bag_of_words=bag_of_words,
+        bow_type=bow_type,
         discrim=discrim,
         regress=regress,
         class_label=class_label,
@@ -965,6 +1000,7 @@ if __name__ == '__main__':
              "Either a BOW id (see list in code) or a filepath. "
              "Multiple BoWs separated by ;",
     )
+    parser.add_argument("--bow_type", type=int, default=0, choices=(0,1))
     parser.add_argument(
         "--discrim",
         "-D",
