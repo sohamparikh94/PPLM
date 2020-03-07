@@ -472,7 +472,7 @@ def build_bows_freq_vectors(bow_indices, tokenizer, device='cuda'):
         single_bow = torch.tensor(single_bow).to(device)
         num_words = single_bow.shape[0]
         bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
-        word_freq = [word_frequency(tokenizer.decode(idx), lang='en') for idx in single_bow]
+        word_freq = [1/word_frequency(tokenizer.decode(idx), lang='en') for idx in single_bow]
         sum_ = np.sum(word_freq)
         word_freq = torch.tensor([[(x/sum_)*len(word_freq)] for x in word_freq]).to(device)
         bow = bow.scatter_(1, single_bow, word_freq)
