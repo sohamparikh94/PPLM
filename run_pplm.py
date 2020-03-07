@@ -493,7 +493,8 @@ def build_bows_logfreq_vectors(bow_indices, tokenizer, device='cuda'):
         single_bow = torch.tensor(single_bow).to(device)
         num_words = single_bow.shape[0]
         bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
-        word_freq = [np.log(1/word_frequency(tokenizer.decode(idx)), lang='en') for idx in single_bow]
+        inv_freq = 1/word_frequency(tokenizer.decode(idx), lang='en')
+        word_freq = [np.log(inv_freq) for idx in single_bow]
         sum_ = np.sum(word_freq)
         word_freq = torch.tensor([[(x/sum_)*len(word_freq)] for x in word_freq]).to(device)
         bow = bow.scatter_(1, single_bow, word_freq)
@@ -512,7 +513,8 @@ def build_bows_avglogfreq_vectors(bow_indices, tokenizer, device='cuda'):
         single_bow = torch.tensor(single_bow).to(device)
         num_words = single_bow.shape[0]
         bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
-        word_freq = [(np.log(1/word_frequency(tokenizer.decode(idx)))+1/word_frequency(tokenizer.decode(idx), lang='en'))/2 for idx in single_bow]
+        inv_freq = 1/word_frequency(tokenizer.decode(idx), lang='en')
+        word_freq = [(inv_freq + np.log(inv_freq))/2 for idx in single_bow]
         sum_ = np.sum(word_freq)
         word_freq = torch.tensor([[(x/sum_)*len(word_freq)] for x in word_freq]).to(device)
         bow = bow.scatter_(1, single_bow, word_freq)
