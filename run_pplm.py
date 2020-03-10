@@ -865,7 +865,8 @@ def run_pplm_example(
         colorama=False,
         verbosity='regular',
         multiple_prompts=False,
-        prompts_file=None
+        prompts_file=None,
+        output_file=None
 ):
     # set Random seed
     torch.manual_seed(seed)
@@ -967,8 +968,14 @@ def run_pplm_example(
                 kl_scale=kl_scale,
                 verbosity_level=verbosity_level
             )
-            for i, pert_gen_tok_text in enumerate(pert_gen_tok_texts):
-                generated_texts.append(pert_gen_tok_text)
+            with open(output_file, 'a') as f:
+
+                for i, pert_gen_tok_text in enumerate(pert_gen_tok_texts):
+                    generated_texts.append(pert_gen_tok_text)
+                    curr_text = tokenizer.decode(pert_gen_tok_text[0][1:])
+                    f.write(curr_text)
+                    f.write('\n-------------------------------------------\n')
+
 
         decoded_texts = list()
         for text in generated_texts:
@@ -1186,6 +1193,8 @@ if __name__ == '__main__':
                         help="if using prompts from a file")
     parser.add_argument("--prompts_file", type=str, 
                         help="type of prompts to be used or the filepath for custom prompts")
+    parser.add_argument("--output_file", type=str, 
+                        help="file where you want to write the generated sequences")
 
     args = parser.parse_args()
     run_pplm_example(**vars(args))
