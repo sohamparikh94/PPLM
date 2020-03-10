@@ -863,7 +863,9 @@ def run_pplm_example(
         seed=0,
         no_cuda=False,
         colorama=False,
-        verbosity='regular'
+        verbosity='regular',
+        multiple_prompts=False,
+        prompts_file=None
 ):
     # set Random seed
     torch.manual_seed(seed)
@@ -1180,6 +1182,10 @@ if __name__ == '__main__':
                         choices=(
                             "quiet", "regular", "verbose", "very_verbose"),
                         help="verbosiry level")
+    parser.add_argument("--multiple_prompts", action="store_true",
+                        help="if using prompts from a file")
+    parser.add_argument("--prompts_file", type=str, 
+                        help="type of prompts to be used or the filepath for custom prompts")
 
     args = parser.parse_args()
     run_pplm_example(**vars(args))
