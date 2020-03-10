@@ -82,6 +82,17 @@ BAG_OF_WORDS_ARCHIVE_MAP = {
     'minimal3': "./paper_code/wordlists/minimal3.txt"
 }
 
+
+
+PROMPTS_MAP = {
+    'legal': './100_prompts/legal.txt',
+    'kitchen': './100_prompts/kitchen.txt',
+    'technology': './100_prompts/technology.txt',
+    'science': './100_prompts/science.txt',
+    'agnostic': './100_prompts/domain_agnostic_prompts.txt'
+}
+
+
 DISCRIMINATOR_MODELS_PARAMS = {
     "clickbait": {
         "url": "https://s3.amazonaws.com/models.huggingface.co/bert/pplm/discriminators/clickbait_classifier_head.pt",
@@ -907,7 +918,63 @@ def run_pplm_example(
         param.requires_grad = False
 
     # figure out conditioning text
-    if uncond:
+    if(multiple_prompts):
+
+        generated_texts = []
+        all_prompts = list()
+        if(prompts_file in PROMPTS_MAP):
+            filepath = PROMPTS_MAP[prompts_file]
+        else:
+            filepath = prompts_file
+        with open(filepath) as f:
+            for line in f:
+                if(line.strip()):
+                    all_prompts.append(line.strip())
+        for prompt in tqdm(all_prompts):
+            if(uncond):
+                tokenized_cond_text = tokenizer.encode(
+                    [tokenizer.bos_token], add_special_tokens=False
+                )
+            else:
+                raw_text = prompt
+                tokenized_cond_text = tokenizer.encode(tokenizer.bos_token + raw_text,
+                    add_special_tokens=False)
+            unpert_gen_tok_text, pert_gen_tok_texts, _, _ = full_text_generation(
+                model=model,
+                tokenizer=tokenizer,
+                context=tokenized_cond_text,
+                device=device,
+                num_samples=num_samples,
+                bag_of_words=bag_of_words,
+                bow_type=bow_type,
+                discrim=discrim,
+                regress=regress,
+                class_label=class_label,
+                length=length,
+                stepsize=stepsize,
+                temperature=temperature,
+                top_k=top_k,
+                sample=sample,
+                num_iterations=num_iterations,
+                grad_length=grad_length,
+                horizon_length=horizon_length,
+                window_length=window_length,
+                decay=decay,
+                gamma=gamma,
+                gm_scale=gm_scale,
+                kl_scale=kl_scale,
+                verbosity_level=verbosity_level
+            )
+            for i, pert_gen_tok_text in enumerate(pert_gen_tok_texts):
+                generated_texts.append(pert_gen_tok_text)
+
+        decoded_texts = list()
+        for text in generated_texts:
+            decoded_texts.append(tokenizer.decode(text[0][1:]))
+
+        return decoded_texts
+
+    elif uncond:
         tokenized_cond_text = tokenizer.encode(
             [tokenizer.bos_token],
             add_special_tokens=False
@@ -1007,11 +1074,15 @@ def run_pplm_example(
             pass
 
         # keep the prefix, perturbed seq, original seq for each index
-        generated_texts.append(
-            (tokenized_cond_text, pert_gen_tok_text, unpert_gen_tok_text)
-        )
+        generated_texts.append(pert_gen_tok_text)
 
-    return generated_texts
+    decoded_texts = list()
+
+    for text in generated_texts:
+        decoded_texts.append(tokenizer.decode(text[0][1:]))
+
+
+    return decoded_texts
 
 
 if __name__ == '__main__':
