@@ -54,6 +54,7 @@ ONE_HOT = 0
 WORD_FREQ = 1
 WORD_FREQ_LOG = 2
 WORD_FREQ_AVGLOG = 3
+WORD_FREQ_EXP = 4
 
 QUIET = 0
 REGULAR = 1
@@ -532,6 +533,24 @@ def build_bows_avglogfreq_vectors(bow_indices, tokenizer, device='cuda'):
     return bows_vectors
 
 
+def build_bows_expfreq_vectors(bow_indices, tokenizer, device='cuda'):
+    if bow_indices is None:
+        return None
+
+    bows_vectors = []
+    for single_bow in bow_indices:
+        single_bow = list(filter(lambda x: len(x) <= 1, single_bow))
+        single_bow = torch.tensor(single_bow).to(device)
+        num_words = single_bow.shape[0]
+        bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
+        word_freq = [np.exp(1/word_frequency(tokenizer.decode(idx)), lang='en') for idx in single_bow]
+        sum_ = np.sum(word_freq)
+        word_freq = torch.tensor([[(x/sum_)*len(word_freq)] for x in word_freq]).to(device)
+        bow = bow.scatter_(1, single_bow, word_freq)
+        bows_vectors.append(bow)
+
+    return bows_vectors
+
 
 def full_text_generation(
         model,
@@ -698,7 +717,8 @@ def generate_text_pplm(
         bows_vectors = build_bows_logfreq_vectors(bow_indices, tokenizer, device)
     elif(bow_type == WORD_FREQ_AVGLOG):
         bows_vectors = build_bows_avglogfreq_vectors(bow_indices, tokenizer, device)
-
+    elif(bow_type == WORD_FREQ_EXP):
+        bows_vectors = build_bows_expfreq_vectors(bow_indices, tokenizer, device)
     
 
     grad_norms = None
@@ -1126,7 +1146,7 @@ if __name__ == '__main__':
              "Either a BOW id (see list in code) or a filepath. "
              "Multiple BoWs separated by ;",
     )
-    parser.add_argument("--bow_type", type=int, default=0, choices=(0,1,2,3))
+    parser.add_argument("--bow_type", type=int, default=0, choices=(0,1,2,3,4))
     parser.add_argument(
         "--discrim",
         "-D",
