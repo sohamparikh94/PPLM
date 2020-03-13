@@ -55,6 +55,7 @@ WORD_FREQ = 1
 WORD_FREQ_LOG = 2
 WORD_FREQ_AVGLOG = 3
 WORD_FREQ_EXP = 4
+WORD_FREQ_SQ = 5
 
 QUIET = 0
 REGULAR = 1
@@ -737,6 +738,8 @@ def generate_text_pplm(
         bows_vectors = build_bows_avglogfreq_vectors(bow_indices, tokenizer, device)
     elif(bow_type == WORD_FREQ_EXP):
         bows_vectors = build_bows_expfreq_vectors(bow_indices, tokenizer, device)
+    elif(bow_type == WORD_FREQ_SQ):
+        bows_vectors = build_bows_sqfreq_vectors(bow_indices, tokenizer, device)
     
 
     grad_norms = None
@@ -1164,7 +1167,7 @@ if __name__ == '__main__':
              "Either a BOW id (see list in code) or a filepath. "
              "Multiple BoWs separated by ;",
     )
-    parser.add_argument("--bow_type", type=int, default=0, choices=(0,1,2,3,4))
+    parser.add_argument("--bow_type", type=int, default=0, choices=(0,1,2,3,4,5))
     parser.add_argument(
         "--discrim",
         "-D",
