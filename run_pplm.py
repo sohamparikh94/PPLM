@@ -551,6 +551,24 @@ def build_bows_expfreq_vectors(bow_indices, tokenizer, device='cuda'):
 
     return bows_vectors
 
+def build_bows_sqfreq_vectors(bow_indices, tokenizer, device='cuda'):
+    if bow_indices is None:
+        return None
+
+    bows_vectors = []
+    for single_bow in bow_indices:
+        single_bow = list(filter(lambda x: len(x) <= 1, single_bow))
+        single_bow = torch.tensor(single_bow).to(device)
+        num_words = single_bow.shape[0]
+        bow = torch.zeros(num_words, tokenizer.vocab_size).to(device)
+        word_freq = [np.square(1/word_frequency(tokenizer.decode(idx), lang='en')) for idx in single_bow]
+        sum_ = np.sum(word_freq)
+        word_freq = torch.tensor([[(x/sum_)*len(word_freq)] for x in word_freq]).to(device)
+        bow = bow.scatter_(1, single_bow, word_freq)
+        bows_vectors.append(bow)
+
+    return bows_vectors
+
 
 def full_text_generation(
         model,
