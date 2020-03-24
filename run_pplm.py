@@ -443,7 +443,7 @@ def get_regressor(
 
 
 
-def get_bag_of_words_indices(bag_of_words_ids_or_paths: List[str], tokenizer) -> \
+def get_bag_of_words_indices(bag_of_words_ids_or_paths: List[str], tokenizer, omit_file=None) -> \
         List[List[List[int]]]:
     bow_indices = []
     for id_or_path in bag_of_words_ids_or_paths:
@@ -453,11 +453,25 @@ def get_bag_of_words_indices(bag_of_words_ids_or_paths: List[str], tokenizer) ->
             filepath = id_or_path
         with open(filepath, "r") as f:
             words = f.read().strip().split("\n")
-        bow_indices.append(
-            [tokenizer.encode(word.strip(),
-                              add_prefix_space=True,
-                              add_special_tokens=False)
-             for word in words])
+        if(not omit_file):
+            with open(omit_file, "r") as f:
+                omit_words = f.read().strip().split("\n")
+
+            new_words = list()
+            for word in words:
+                if(word not in omit_words):
+                    new_words.append(word)
+            bow_indices.append(
+                [tokenizer.encode(word.strip(),
+                                  add_prefix_space=True,
+                                  add_special_tokens=False)
+                 for word in new_words])
+        else:
+            bow_indices.append(
+                [tokenizer.encode(word.strip(),
+                                  add_prefix_space=True,
+                                  add_special_tokens=False)
+                 for word in words])
     return bow_indices
 
 
@@ -596,6 +610,7 @@ def full_text_generation(
         gm_scale=0.9,
         kl_scale=0.01,
         verbosity_level=REGULAR,
+        omit_file=None,
         **kwargs
 ):
     classifier, class_id = get_classifier(
@@ -611,7 +626,7 @@ def full_text_generation(
     bow_indices = []
     if bag_of_words:
         bow_indices = get_bag_of_words_indices(bag_of_words.split(";"),
-                                               tokenizer)
+                                               tokenizer, omit_file)
 
     if bag_of_words and classifier:
         loss_type = PPLM_BOW_DISCRIM
@@ -907,7 +922,8 @@ def run_pplm_example(
         verbosity='regular',
         multiple_prompts=False,
         prompts_file=None,
-        output_file=None
+        output_file=None,
+        omit_file=None
 ):
     # set Random seed
     torch.manual_seed(seed)
@@ -1007,7 +1023,8 @@ def run_pplm_example(
                 gamma=gamma,
                 gm_scale=gm_scale,
                 kl_scale=kl_scale,
-                verbosity_level=verbosity_level
+                verbosity_level=verbosity_level,
+                omit_file=omit_file
             )
             with open(output_file, 'a') as f:
 
@@ -1071,7 +1088,8 @@ def run_pplm_example(
         gamma=gamma,
         gm_scale=gm_scale,
         kl_scale=kl_scale,
-        verbosity_level=verbosity_level
+        verbosity_level=verbosity_level,
+        omit_file=omit_file
     )
 
     # untokenize unperturbed text
@@ -1089,7 +1107,7 @@ def run_pplm_example(
     bow_word_ids = set()
     if bag_of_words and colorama:
         bow_indices = get_bag_of_words_indices(bag_of_words.split(";"),
-                                               tokenizer)
+                                               tokenizer, omit_file)
         for single_bow_list in bow_indices:
             # filtering all words in the list composed of more than 1 token
             filtered = list(filter(lambda x: len(x) <= 1, single_bow_list))
@@ -1236,6 +1254,8 @@ if __name__ == '__main__':
                         help="type of prompts to be used or the filepath for custom prompts")
     parser.add_argument("--output_file", type=str, 
                         help="file where you want to write the generated sequences")
+    parser.add_argument("--omit_file", type=str, 
+                        help="file where you want to keep the words to be ommitted")
 
     args = parser.parse_args()
     run_pplm_example(**vars(args))
