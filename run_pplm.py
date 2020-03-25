@@ -251,7 +251,7 @@ def perturb_past(
                 loss_list.append(bow_loss)
                 if(kl_bow):
                     single_bow = torch.zeros_like(unpert_probs).to(device)
-                    rows, columns = np.where(bow > 0)
+                    rows, columns = np.where(bow.cpu() > 0)
                     for x in range(len(rows)):
                         single_bow[0][columns[x]] = bow[rows[x]][columns[x]]
                     single_bow = single_bow/torch.sum(single_bow)
