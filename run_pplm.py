@@ -162,6 +162,7 @@ def perturb_past(
         decay=False,
         gamma=1.5,
         kl_scale=0.01,
+        kl_bow = False,
         device='cuda',
         verbosity_level=REGULAR
 ):
@@ -238,11 +239,27 @@ def perturb_past(
         loss = 0.0
         loss_list = []
         if loss_type == PPLM_BOW or loss_type == PPLM_BOW_DISCRIM:
+            unpert_probs = F.softmax(unpert_logits[:, -1, :], dim=-1)
+            unpert_probs = (
+                    unpert_probs + SMALL_CONST *
+                    (unpert_probs <= SMALL_CONST).float().to(device).detach()
+            )
             for bow in bows_vectors:
                 bow_logits = torch.mm(probs, torch.t(bow))
                 bow_loss = -torch.log(torch.sum(bow_logits))
                 loss += bow_loss
                 loss_list.append(bow_loss)
+                if(kl_bow):
+                    single_bow = torch.zeros_like(unpert_probs).to(device)
+                    rows, columns = np.where(bow > 0)
+                    for x in range(len(rows)):
+                        single_bow[0][columns[x]] = bow[rows[x]][columns[x]]
+                    single_bow = single_bow/torch.sum(single_bow)
+                    single_bow += SMALL_CONST
+                    bow_kl_loss = (single_bow * (single_bow / unpert_probs).log()).sum()
+                    loss += bow_kl_loss
+                    loss_list.append(bow_kl_loss)
+
             if verbosity_level >= VERY_VERBOSE:
                 print(" pplm_bow_loss:", loss.data.cpu().numpy())
 
@@ -609,6 +626,7 @@ def full_text_generation(
         gamma=1.5,
         gm_scale=0.9,
         kl_scale=0.01,
+        kl_bow=False,
         verbosity_level=REGULAR,
         omit_file=None,
         **kwargs
@@ -693,6 +711,7 @@ def full_text_generation(
             gamma=gamma,
             gm_scale=gm_scale,
             kl_scale=kl_scale,
+            kl_bow=kl_bow,
             verbosity_level=verbosity_level
         )
         pert_gen_tok_texts.append(pert_gen_tok_text)
@@ -732,6 +751,7 @@ def generate_text_pplm(
         gamma=1.5,
         gm_scale=0.9,
         kl_scale=0.01,
+        kl_bow=False,
         verbosity_level=REGULAR
 ):
     output_so_far = None
@@ -816,6 +836,7 @@ def generate_text_pplm(
                     decay=decay,
                     gamma=gamma,
                     kl_scale=kl_scale,
+                    kl_bow=kl_bow,
                     device=device,
                     verbosity_level=verbosity_level
                 )
@@ -916,6 +937,7 @@ def run_pplm_example(
         gamma=1.5,
         gm_scale=0.9,
         kl_scale=0.01,
+        kl_bow=False,
         seed=0,
         no_cuda=False,
         colorama=False,
@@ -1023,6 +1045,7 @@ def run_pplm_example(
                 gamma=gamma,
                 gm_scale=gm_scale,
                 kl_scale=kl_scale,
+                kl_bow=kl_bow,
                 verbosity_level=verbosity_level,
                 omit_file=omit_file
             )
@@ -1088,6 +1111,7 @@ def run_pplm_example(
         gamma=gamma,
         gm_scale=gm_scale,
         kl_scale=kl_scale,
+        kl_bow=kl_bow,
         verbosity_level=verbosity_level,
         omit_file=omit_file
     )
@@ -1240,6 +1264,7 @@ if __name__ == '__main__':
     parser.add_argument("--gamma", type=float, default=1.5)
     parser.add_argument("--gm_scale", type=float, default=0.9)
     parser.add_argument("--kl_scale", type=float, default=0.01)
+    parser.add_argument("--kl_bow", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no_cuda", action="store_true", help="no cuda")
     parser.add_argument("--colorama", action="store_true",
