@@ -470,7 +470,7 @@ def get_bag_of_words_indices(bag_of_words_ids_or_paths: List[str], tokenizer, om
             filepath = id_or_path
         with open(filepath, "r") as f:
             words = f.read().strip().split("\n")
-        if(not omit_file):
+        if(omit_file):
             with open(omit_file, "r") as f:
                 omit_words = f.read().strip().split("\n")
 
