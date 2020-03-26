@@ -740,6 +740,7 @@ def full_text_generation(
                             add_prefix_space=True,
                             add_special_tokens=False)
                      for word in new_words]
+            tokenized_words = list(filter(lambda x: len(x) <= 1, tokenized_words))
             if(len(tokenized_words)):
                 with open(omit_file, 'w') as f:
                     for word in omit_words:
