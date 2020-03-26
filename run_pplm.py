@@ -696,7 +696,7 @@ def full_text_generation(
                                                     tokenizer, omit_file)
             with open(omit_file) as f:
                 omit_words = f.read().strip().split('\n')
-            with open(BAG_OF_WORDS_ARCHIVE_MAP[bag_of_words.split(';')[0]]):
+            with open('paper_code/wordlists/' + bag_of_words.split(';')[0] + '.txt') as f:
                 bow_words = f.read().strip().split('\n')
         pert_gen_tok_text, discrim_loss, loss_in_time = generate_text_pplm(
             model=model,
