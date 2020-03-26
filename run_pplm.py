@@ -27,6 +27,7 @@ from IPython import embed
 
 import argparse
 import json
+import spacy
 from operator import add
 from wordfreq import word_frequency
 from typing import List, Optional, Tuple, Union
@@ -113,6 +114,8 @@ DISCRIMINATOR_MODELS_PARAMS = {
         "pretrained_model": "gpt2-medium",
     },
 }
+
+nlp_light = spacy.load('en', disable=['parser', 'tagger', 'ner'])
 
 
 def to_var(x, requires_grad=False, volatile=False, device='cuda'):
@@ -629,6 +632,7 @@ def full_text_generation(
         kl_bow=False,
         verbosity_level=REGULAR,
         omit_file=None,
+        omit_seq=False,
         **kwargs
 ):
     classifier, class_id = get_classifier(
@@ -686,6 +690,14 @@ def full_text_generation(
     losses_in_time = []
 
     for i in range(num_samples):
+        if(omit_seq):
+            if bag_of_words:
+                bow_indices = get_bag_of_words_indices(bag_of_words.split(";"),
+                                                    tokenizer, omit_file)
+            with open(omit_file) as f:
+                omit_words = f.read().strip().split('\n')
+            with open(BAG_OF_WORDS_ARCHIVE_MAP[bag_of_words.split(';')]):
+                bow_words = f.read().strip().split('\n')
         pert_gen_tok_text, discrim_loss, loss_in_time = generate_text_pplm(
             model=model,
             tokenizer=tokenizer,
@@ -712,9 +724,32 @@ def full_text_generation(
             gm_scale=gm_scale,
             kl_scale=kl_scale,
             kl_bow=kl_bow,
-            verbosity_level=verbosity_level
+            verbosity_level=verbosity_level,
         )
-        pert_gen_tok_texts.append(pert_gen_tok_text)
+        generated_text = tokenizer.decode(pert_gen_tok_text[0][1:])
+        pert_gen_tok_texts.append(generated_text)
+        if(omit_seq):
+            for token in nlp_light(generated_text):
+                if(token.text in bow_words and token.text not in omit_words):
+                    omit_words.append(token.text)
+            new_words = list()
+            for word in bow_words:
+                if(word not in omit_words):
+                    new_words.append(word)
+            tokenized_words = [tokenizer.encode(word.strip(),
+                            add_prefix_space=True,
+                            add_special_tokens=False)
+                     for word in new_words]
+            if(len(tokenized_words)):
+                with open(omit_file, 'w') as f:
+                    for word in omit_words:
+                        f.write(word)
+                        f.write('\n')
+            else:
+                with open(omit_file, 'w') as f:
+                    f.write('')
+
+
         if classifier is not None:
             discrim_losses.append(discrim_loss.data.cpu().numpy())
         losses_in_time.append(loss_in_time)
@@ -945,7 +980,8 @@ def run_pplm_example(
         multiple_prompts=False,
         prompts_file=None,
         output_file=None,
-        omit_file=None
+        omit_file=None,
+        omit_seq=False
 ):
     # set Random seed
     torch.manual_seed(seed)
@@ -1113,7 +1149,8 @@ def run_pplm_example(
         kl_scale=kl_scale,
         kl_bow=kl_bow,
         verbosity_level=verbosity_level,
-        omit_file=omit_file
+        omit_file=omit_file,
+        omit_seq=omit_seq
     )
 
     # untokenize unperturbed text
@@ -1168,13 +1205,13 @@ def run_pplm_example(
         # keep the prefix, perturbed seq, original seq for each index
         generated_texts.append(pert_gen_tok_text)
 
-    decoded_texts = list()
+    # decoded_texts = list()
 
-    for text in generated_texts:
-        decoded_texts.append(tokenizer.decode(text[0][1:]))
+    # for text in generated_texts:
+    #     decoded_texts.append(tokenizer.decode(text[0][1:]))
 
 
-    return decoded_texts
+    return generated_texts
 
 
 if __name__ == '__main__':
@@ -1281,6 +1318,8 @@ if __name__ == '__main__':
                         help="file where you want to write the generated sequences")
     parser.add_argument("--omit_file", type=str, 
                         help="file where you want to keep the words to be ommitted")
+    parser.add_argument("--omit_seq", action="store_true",
+                        help="if omitting words after every sequence")
 
     args = parser.parse_args()
     run_pplm_example(**vars(args))
