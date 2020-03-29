@@ -83,7 +83,8 @@ BAG_OF_WORDS_ARCHIVE_MAP = {
     'minimal1': "./paper_code/wordlists/minimal1.txt",
     'minimal2': "./paper_code/wordlists/minimal2.txt",
     'minimal3': "./paper_code/wordlists/minimal3.txt",
-    'simple': "./paper_code/wordlists/simple.txt"
+    'simple': "./paper_code/wordlists/simple.txt",
+    'complex': "./paper_code/wordlists/complex.txt"
 }
 
 
