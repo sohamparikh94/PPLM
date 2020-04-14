@@ -503,7 +503,6 @@ def build_bows_one_hot_vectors(bow_indices, tokenizer, device='cuda'):
 
     one_hot_bows_vectors = []
     for single_bow in bow_indices:
-        embed()
         single_bow = list(filter(lambda x: len(x) <= 1, single_bow))
         single_bow = torch.tensor(single_bow).to(device)
         num_words = single_bow.shape[0]
