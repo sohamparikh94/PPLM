@@ -138,7 +138,7 @@ def cached_collate_fn(data):
 
 
 def train_epoch(data_loader, discriminator, optimizer,
-                epoch=0, log_interval=10, device='cpu'):
+                epoch=0, log_interval=10, device='cpu', test_loader=None):
     samples_so_far = 0
     discriminator.train_custom()
     for batch_idx, (input_t, target_t) in enumerate(data_loader):
@@ -161,6 +161,13 @@ def train_epoch(data_loader, discriminator, optimizer,
                     100 * samples_so_far / len(data_loader.dataset), loss.item()
                 )
             )
+        if(batch_idx%1000 == 0 and test_loader):
+            evaluate_performance(
+                data_loader=test_loader,
+                discriminator=discriminator,
+                device=device
+            )
+
 
 
 def evaluate_performance(data_loader, discriminator, device='cpu'):
@@ -521,7 +528,8 @@ def train_discriminator(
             optimizer=optimizer,
             epoch=epoch,
             log_interval=log_interval,
-            device=device
+            device=device,
+            test_loader=test_loader
         )
         evaluate_performance(
             data_loader=test_loader,
